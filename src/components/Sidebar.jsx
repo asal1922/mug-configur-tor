@@ -19,12 +19,12 @@ const BG_PRESETS = [
 
 // Built-in texture presets (Unsplash + reliable CDN URLs)
 const TEXTURE_PRESETS = [
- /*    {
-        id: "default",
-        label: "Original",
-        url: "https://images.unsplash.com/photo-1506784365847-bbad939e9335?fm=jpg&q=80&w=2048",
-        thumb: "https://images.unsplash.com/photo-1506784365847-bbad939e9335?fm=jpg&q=60&w=120",
-    }, */
+    /*    {
+           id: "default",
+           label: "Original",
+           url: "https://images.unsplash.com/photo-1506784365847-bbad939e9335?fm=jpg&q=80&w=2048",
+           thumb: "https://images.unsplash.com/photo-1506784365847-bbad939e9335?fm=jpg&q=60&w=120",
+       }, */
     {
         id: "marble",
         label: "Marble",
@@ -297,20 +297,22 @@ export default function Sidebar({
                 </Section>
             </div>
 
-            <div style={{ padding: "14px 16px", borderTop: "1px solid #181818", display: "flex", gap: 8 }}>
-                <button onClick={onReset} style={{
-                    flex: 1, padding: "10px", background: "#111", color: "#555",
-                    border: "1px solid #1e1e1e", borderRadius: 10, fontSize: 12, cursor: "pointer", fontWeight: 500,
-                }}>
-                    Reset
-                </button>
-                <button style={{
+            <button
+                onClick={() => {
+                    const variantId = "53278746444123";
+                    const shopUrl = "mug-customizer.myshopify.com";
+                    const note = `Body color: ${colors.body || "original"}, Cap color: ${colors.cap || "original"}, Ring color: ${colors.ring || "original"}`;
+                    window.open(
+                        `https://${shopUrl}/cart/${variantId}:1?note=${encodeURIComponent(note)}`,
+                        '_blank'
+                    );
+                }}
+                style={{
                     flex: 2, padding: "10px", background: "linear-gradient(135deg, #e8c06e, #d4a843)",
                     color: "#0a0a0a", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
                 }}>
-                    Add to Cart →
-                </button>
-            </div>
+                Add to Cart →
+            </button>
         </div>
     );
 }
