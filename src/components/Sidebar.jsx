@@ -303,7 +303,7 @@ export default function Sidebar({
                     const shopUrl = "mug-customizer.myshopify.com";
                     const note = `Body color: ${colors.body || "original"}, Cap color: ${colors.cap || "original"}, Ring color: ${colors.ring || "original"}`;
                     window.open(
-                        `https://${shopUrl}/cart/${variantId}:1?note=${encodeURIComponent(note)}`,
+                        `https://${shopUrl}/cart/${variantId}:1?note=${encodeURIComponent(note)}&password=eaviad`,
                         '_blank'
                     );
                 }}
