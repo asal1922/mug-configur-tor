@@ -24,7 +24,6 @@ export default function CanvasEditor({
     const [brushSize, setBrushSize] = useState(20);
     const [brushColor, setBrushColor] = useState("#e8c06e");
     const [eraserSize, setEraserSize] = useState(30);
-    // paintSubTool: "brush" یا "eraser"
     const [paintSubTool, setPaintSubTool] = useState("brush");
 
     const isDrawingRef = useRef(false);
@@ -50,9 +49,6 @@ export default function CanvasEditor({
             } catch { return false; }
         })();
 
-        // sharedCanvas (texture مدل):
-        // اگه texture داره: texture + رنگ (multiply) روش
-        // اگه فقط رنگ داره: sharedCanvas خالی بمونه، رنگ از Model.jsx روی material اعمال میشه
         if (hasOriginalContent) {
             ctx.drawImage(originalCanvas, 0, 0, W, H);
             if (baseColor) {
@@ -64,15 +60,12 @@ export default function CanvasEditor({
                 ctx.globalCompositeOperation = "source-over";
             }
         }
-        // اگه فقط رنگ داره (بدون texture): sharedCanvas خالی بمونه
 
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
 
         els.forEach(el => {
-            if (el.type === "image") {
-                ctx.drawImage(el.image, el.x, el.y, el.w, el.h);
-            }
+            if (el.type === "image") ctx.drawImage(el.image, el.x, el.y, el.w, el.h);
             if (el.type === "text") {
                 ctx.save();
                 ctx.font = `bold ${el.size}px ${el.font || "Arial"}`;
@@ -81,12 +74,8 @@ export default function CanvasEditor({
                 ctx.fillText(el.text, el.x, el.y);
                 ctx.restore();
             }
-            if (el.type === "stroke") {
-                drawStroke(ctx, el);
-            }
-            if (el.type === "eraser") {
-                drawEraser(ctx, el, sharedCanvas);
-            }
+            if (el.type === "stroke") drawStroke(ctx, el);
+            if (el.type === "eraser") drawEraser(ctx, el, sharedCanvas);
         });
 
         if (displayRef.current) {
@@ -94,7 +83,6 @@ export default function CanvasEditor({
             dCtx.clearRect(0, 0, W, H);
 
             if (hasOriginalContent) {
-                // texture داریم: همون رو به عنوان پس‌زمینه بکش
                 dCtx.drawImage(originalCanvas, 0, 0, W, H);
                 if (baseColor) {
                     dCtx.save();
@@ -104,13 +92,11 @@ export default function CanvasEditor({
                     dCtx.restore();
                 }
             } else if (baseColor) {
-                // فقط رنگ، بدون texture
                 dCtx.save();
                 dCtx.fillStyle = baseColor;
                 dCtx.fillRect(0, 0, W, H);
                 dCtx.restore();
             } else {
-                // هیچی نیست: checkerboard
                 const tile = 64;
                 for (let row = 0; row < H; row += tile) {
                     for (let col = 0; col < W; col += tile) {
@@ -120,11 +106,8 @@ export default function CanvasEditor({
                 }
             }
 
-            // elements (text, image, stroke, eraser) رو روی پس‌زمینه بکش
             els.forEach(el => {
-                if (el.type === "image") {
-                    dCtx.drawImage(el.image, el.x, el.y, el.w, el.h);
-                }
+                if (el.type === "image") dCtx.drawImage(el.image, el.x, el.y, el.w, el.h);
                 if (el.type === "text") {
                     dCtx.save();
                     dCtx.font = `bold ${el.size}px ${el.font || "Arial"}`;
@@ -133,12 +116,8 @@ export default function CanvasEditor({
                     dCtx.fillText(el.text, el.x, el.y);
                     dCtx.restore();
                 }
-                if (el.type === "stroke") {
-                    drawStroke(dCtx, el);
-                }
-                if (el.type === "eraser") {
-                    drawEraser(dCtx, el, displayRef.current);
-                }
+                if (el.type === "stroke") drawStroke(dCtx, el);
+                if (el.type === "eraser") drawEraser(dCtx, el, displayRef.current);
             });
         }
 
@@ -155,18 +134,13 @@ export default function CanvasEditor({
         ctx.lineWidth = el.size;
         ctx.beginPath();
         ctx.moveTo(el.points[0].x, el.points[0].y);
-        for (let i = 1; i < el.points.length; i++) {
-            ctx.lineTo(el.points[i].x, el.points[i].y);
-        }
+        for (let i = 1; i < el.points.length; i++) ctx.lineTo(el.points[i].x, el.points[i].y);
         ctx.stroke();
         ctx.restore();
     }
 
-    // پاک‌کن: مسیر eraser رو mask میکنه و texture+رنگ زیرین رو restore میکنه
     function drawEraser(ctx, el, targetCanvas) {
         if (!el.points || el.points.length < 2) return;
-
-        // یه offscreen canvas بساز که فقط مسیر eraser رو داره
         const mask = document.createElement("canvas");
         mask.width = W; mask.height = H;
         const mCtx = mask.getContext("2d");
@@ -179,13 +153,12 @@ export default function CanvasEditor({
         for (let i = 1; i < el.points.length; i++) mCtx.lineTo(el.points[i].x, el.points[i].y);
         mCtx.stroke();
 
-        // یه offscreen canvas از لایه پایه (texture+رنگ) بساز
         const base = document.createElement("canvas");
         base.width = W; base.height = H;
         const bCtx = base.getContext("2d");
         if (originalCanvas) {
             const hasContent = (() => {
-                try { return originalCanvas.getContext("2d").getImageData(0,0,4,4).data.some(v=>v!==0); }
+                try { return originalCanvas.getContext("2d").getImageData(0, 0, 4, 4).data.some(v => v !== 0); }
                 catch { return false; }
             })();
             if (hasContent) {
@@ -203,7 +176,6 @@ export default function CanvasEditor({
             }
         }
 
-        // فقط جایی که mask داره، لایه پایه رو روی targetCanvas بکش
         bCtx.save();
         bCtx.globalCompositeOperation = "destination-in";
         bCtx.drawImage(mask, 0, 0);
@@ -226,9 +198,12 @@ export default function CanvasEditor({
 
     const getPos = (e) => {
         const rect = displayRef.current.getBoundingClientRect();
+        // Support both mouse and touch events
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
         return {
-            x: ((e.clientX - rect.left) / rect.width) * W,
-            y: ((e.clientY - rect.top) / rect.height) * H,
+            x: ((clientX - rect.left) / rect.width) * W,
+            y: ((clientY - rect.top) / rect.height) * H,
         };
     };
 
@@ -240,7 +215,6 @@ export default function CanvasEditor({
         if (tool === "paint") {
             isDrawingRef.current = true;
             lastPosRef.current = { x, y };
-
             const isEraser = paintSubTool === "eraser";
             const stroke = {
                 id: Date.now(),
@@ -287,9 +261,7 @@ export default function CanvasEditor({
                 points: [...currentStrokeRef.current.points, { x, y }],
             };
             currentStrokeRef.current = updatedStroke;
-            onElementsChange(elements.map(el =>
-                el.id === updatedStroke.id ? updatedStroke : el
-            ));
+            onElementsChange(elements.map(el => el.id === updatedStroke.id ? updatedStroke : el));
             return;
         }
 
@@ -370,7 +342,6 @@ export default function CanvasEditor({
     };
 
     const undoLastStroke = () => {
-        // آخرین stroke یا eraser رو پیدا و حذف کن
         const lastIdx = [...elements].reverse().findIndex(el => el.type === "stroke" || el.type === "eraser");
         if (lastIdx === -1) return;
         const realIdx = elements.length - 1 - lastIdx;
@@ -385,65 +356,50 @@ export default function CanvasEditor({
     const strokeCount = elements.filter(e => e.type === "stroke" || e.type === "eraser").length;
 
     const getCursor = () => {
-        if (tool === "paint") {
-            return paintSubTool === "eraser" ? "cell" : "crosshair";
-        }
+        if (tool === "paint") return paintSubTool === "eraser" ? "cell" : "crosshair";
         if (draggingRef.current) return "grabbing";
         return "default";
     };
 
     return (
-        <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-            <div style={{
-                padding: "10px 14px", background: "#0a0a0a",
-                borderBottom: "1px solid #1f1f1f", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
-            }}>
-                <span style={{ color: "#444", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", marginRight: 4 }}>
-                    Editor
-                </span>
+        <div className="h-full flex flex-col">
+            {/* Toolbar */}
+            <div className="px-[14px] py-[10px] bg-[#0a0a0a] border-b border-[#1f1f1f] flex gap-[6px] items-center flex-wrap">
+                <span className="text-[#444] text-[10px] tracking-[2px] uppercase mr-1">Editor</span>
 
-                {/* Tool selector: Select / Paint */}
-                <div style={{ display: "flex", gap: 3, background: "#111", borderRadius: 8, padding: 3, border: "1px solid #1e1e1e" }}>
+                {/* Tool selector */}
+                <div className="flex gap-[3px] bg-[#111] rounded-[8px] p-[3px] border border-[#1e1e1e]">
                     {[
                         { id: "select", icon: "↖", label: "Select" },
                         { id: "paint", icon: "✏", label: "Paint" },
                     ].map(t => (
-                        <button key={t.id} onClick={() => { setTool(t.id); selectedIdRef.current = null; }}
+                        <button
+                            key={t.id}
+                            onClick={() => { setTool(t.id); selectedIdRef.current = null; }}
                             title={t.label}
-                            style={{
-                                padding: "5px 10px", borderRadius: 6, border: "none",
-                                background: tool === t.id ? "#e8c06e" : "transparent",
-                                color: tool === t.id ? "#0a0a0a" : "#555",
-                                cursor: "pointer", fontSize: 13, fontWeight: 600, transition: "all 0.12s",
-                            }}>
+                            className={`px-[10px] py-[5px] rounded-[6px] border-none text-[13px] font-semibold cursor-pointer transition-all duration-[120ms]
+                                ${tool === t.id ? "bg-[#e8c06e] text-[#0a0a0a]" : "bg-transparent text-[#555]"}`}
+                        >
                             {t.icon}
                         </button>
                     ))}
                 </div>
 
-                {/* Paint sub-tools: Brush / Eraser */}
+                {/* Paint sub-tools */}
                 {tool === "paint" && (
-                    <div style={{ display: "flex", gap: 3, background: "#111", borderRadius: 8, padding: 3, border: "1px solid #1e1e1e" }}>
+                    <div className="flex gap-[3px] bg-[#111] rounded-[8px] p-[3px] border border-[#1e1e1e]">
                         <button
                             onClick={() => setPaintSubTool("brush")}
-                            title="Brush"
-                            style={{
-                                padding: "5px 10px", borderRadius: 6, border: "none",
-                                background: paintSubTool === "brush" ? "#e8c06e" : "transparent",
-                                color: paintSubTool === "brush" ? "#0a0a0a" : "#555",
-                                cursor: "pointer", fontSize: 13, fontWeight: 600, transition: "all 0.12s",
-                            }}>
+                            className={`px-[10px] py-[5px] rounded-[6px] border-none text-[13px] font-semibold cursor-pointer transition-all duration-[120ms]
+                                ${paintSubTool === "brush" ? "bg-[#e8c06e] text-[#0a0a0a]" : "bg-transparent text-[#555]"}`}
+                        >
                             ✏ Brush
                         </button>
                         <button
                             onClick={() => setPaintSubTool("eraser")}
-                            title="Eraser"
-                            style={{
-                                padding: "5px 10px", borderRadius: 6, border: "none",
-                                background: paintSubTool === "eraser" ? "#e8c06e" : "transparent",
-                                color: paintSubTool === "eraser" ? "#0a0a0a" : "#555",
-                                cursor: "pointer", fontSize: 13, fontWeight: 600, transition: "all 0.12s",
-                            }}>
+                            className={`px-[10px] py-[5px] rounded-[6px] border-none text-[13px] font-semibold cursor-pointer transition-all duration-[120ms]
+                                ${paintSubTool === "eraser" ? "bg-[#e8c06e] text-[#0a0a0a]" : "bg-transparent text-[#555]"}`}
+                        >
                             ◻ Eraser
                         </button>
                     </div>
@@ -451,72 +407,101 @@ export default function CanvasEditor({
 
                 {/* Brush controls */}
                 {tool === "paint" && paintSubTool === "brush" && (
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", background: "#111", borderRadius: 8, padding: "5px 10px", border: "1px solid #1e1e1e" }}>
-                        <input type="color" value={brushColor} onChange={e => setBrushColor(e.target.value)}
-                            style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a2a", cursor: "pointer", padding: 1, background: "none" }} />
-                        <span style={{ color: "#444", fontSize: 10 }}>SIZE</span>
-                        <input type="range" min={3} max={120} value={brushSize}
+                    <div className="flex gap-[6px] items-center bg-[#111] rounded-[8px] px-[10px] py-[5px] border border-[#1e1e1e]">
+                        <input
+                            type="color"
+                            value={brushColor}
+                            onChange={e => setBrushColor(e.target.value)}
+                            className="w-7 h-7 rounded-[6px] border border-[#2a2a2a] cursor-pointer p-[1px] bg-transparent"
+                        />
+                        <span className="text-[#444] text-[10px]">SIZE</span>
+                        <input
+                            type="range" min={3} max={120} value={brushSize}
                             onChange={e => setBrushSize(Number(e.target.value))}
-                            style={{ width: 80, accentColor: "#e8c06e" }} />
-                        <span style={{ color: "#888", fontSize: 11, minWidth: 24 }}>{brushSize}</span>
+                            className="w-20 accent-[#e8c06e]"
+                        />
+                        <span className="text-[#888] text-[11px] min-w-[24px]">{brushSize}</span>
                     </div>
                 )}
 
                 {/* Eraser controls */}
                 {tool === "paint" && paintSubTool === "eraser" && (
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", background: "#111", borderRadius: 8, padding: "5px 10px", border: "1px solid #1e1e1e" }}>
-                        <span style={{ fontSize: 16 }}>◻</span>
-                        <span style={{ color: "#444", fontSize: 10 }}>SIZE</span>
-                        <input type="range" min={5} max={200} value={eraserSize}
+                    <div className="flex gap-[6px] items-center bg-[#111] rounded-[8px] px-[10px] py-[5px] border border-[#1e1e1e]">
+                        <span className="text-[16px]">◻</span>
+                        <span className="text-[#444] text-[10px]">SIZE</span>
+                        <input
+                            type="range" min={5} max={200} value={eraserSize}
                             onChange={e => setEraserSize(Number(e.target.value))}
-                            style={{ width: 80, accentColor: "#e8c06e" }} />
-                        <span style={{ color: "#888", fontSize: 11, minWidth: 24 }}>{eraserSize}</span>
+                            className="w-20 accent-[#e8c06e]"
+                        />
+                        <span className="text-[#888] text-[11px] min-w-[24px]">{eraserSize}</span>
                     </div>
                 )}
 
+                {/* Stroke actions */}
                 {strokeCount > 0 && (
-                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                        <button onClick={undoLastStroke}
-                            style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid #1e1e1e", background: "#111", color: "#888", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+                    <div className="flex gap-1 items-center">
+                        <button
+                            onClick={undoLastStroke}
+                            className="px-[10px] py-[6px] rounded-[7px] border border-[#1e1e1e] bg-[#111] text-[#888] cursor-pointer text-[11px] font-semibold"
+                        >
                             ↩ Undo
                         </button>
-                        <button onClick={clearAllStrokes}
-                            style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid #2a1515", background: "#1a0e0e", color: "#c0392b", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+                        <button
+                            onClick={clearAllStrokes}
+                            className="px-[10px] py-[6px] rounded-[7px] border border-[#2a1515] bg-[#1a0e0e] text-[#c0392b] cursor-pointer text-[11px] font-semibold"
+                        >
                             ✕ Clear Paint
                         </button>
-                        <span style={{ color: "#333", fontSize: 10 }}>{strokeCount} stroke{strokeCount !== 1 ? "s" : ""}</span>
+                        <span className="text-[#333] text-[10px]">{strokeCount} stroke{strokeCount !== 1 ? "s" : ""}</span>
                     </div>
                 )}
 
+                {/* Select tool controls */}
                 {tool === "select" && (
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
+                    <div className="flex gap-[6px] items-center flex-1">
                         <ToolBtn icon="🖼" label="Image" color="#e8c06e" dark onClick={() => fileInputRef.current.click()} />
-                        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={addImage} />
+                        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={addImage} />
 
-                        <div style={{ display: "flex", gap: 5, alignItems: "center", flex: 1, minWidth: 200 }}>
-                            <input ref={textInputRef} onKeyDown={e => e.key === "Enter" && addText()}
+                        <div className="flex gap-[5px] items-center flex-1 min-w-[200px]">
+                            <input
+                                ref={textInputRef}
+                                onKeyDown={e => e.key === "Enter" && addText()}
                                 placeholder="Type text..."
-                                style={{ flex: 1, background: "#161616", border: "1px solid #2a2a2a", borderRadius: 8, color: "#fff", padding: "6px 10px", fontSize: 12, outline: "none" }} />
-                            <select defaultValue="Arial" onChange={e => { fontFamilyRef.current = e.target.value; }}
-                                style={{ background: "#161616", border: "1px solid #2a2a2a", borderRadius: 7, color: "#fff", padding: "6px 7px", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                                className="flex-1 bg-[#161616] border border-[#2a2a2a] rounded-[8px] text-white px-[10px] py-[6px] text-[12px] outline-none"
+                            />
+                            <select
+                                defaultValue="Arial"
+                                onChange={e => { fontFamilyRef.current = e.target.value; }}
+                                className="bg-[#161616] border border-[#2a2a2a] rounded-[7px] text-white px-[7px] py-[6px] text-[11px] outline-none cursor-pointer"
+                            >
                                 {["Arial", "Georgia", "Impact", "Verdana", "Courier New", "Times New Roman"].map(f =>
                                     <option key={f} value={f}>{f}</option>
                                 )}
                             </select>
-                            <input type="color" defaultValue="#ffffff" onChange={e => { textColorRef.current = e.target.value; }}
-                                style={{ width: 32, height: 32, borderRadius: 7, border: "1px solid #333", cursor: "pointer", padding: 2, background: "none" }} />
-                            <input type="range" min={40} max={300} defaultValue={120}
+                            <input
+                                type="color"
+                                defaultValue="#ffffff"
+                                onChange={e => { textColorRef.current = e.target.value; }}
+                                className="w-8 h-8 rounded-[7px] border border-[#333] cursor-pointer p-[2px] bg-transparent"
+                            />
+                            <input
+                                type="range" min={40} max={300} defaultValue={120}
                                 onChange={e => { fontSizeRef.current = Number(e.target.value); }}
-                                style={{ width: 60, accentColor: "#e8c06e" }} />
+                                className="w-[60px] accent-[#e8c06e]"
+                            />
                             <ToolBtn icon="T+" label="Add" color="#2a2a2a" onClick={addText} />
                         </div>
 
                         {selected && (
-                            <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                            <div className="flex gap-[5px] items-center">
                                 {selected.type === "text" && (
-                                    <input type="color" value={selected.color}
+                                    <input
+                                        type="color"
+                                        value={selected.color}
                                         onChange={e => updateSelectedColor(e.target.value)}
-                                        style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid #333", cursor: "pointer", padding: 2, background: "none" }} />
+                                        className="w-7 h-7 rounded-[7px] border border-[#333] cursor-pointer p-[2px] bg-transparent"
+                                    />
                                 )}
                                 <ToolBtn icon="🗑" label="Delete" color="#c0392b" onClick={deleteSelected} />
                             </div>
@@ -525,60 +510,75 @@ export default function CanvasEditor({
                 )}
             </div>
 
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, overflow: "hidden" }}>
-                <div style={{ position: "relative", width: "100%", maxWidth: "100%", aspectRatio: `${displayAspect}` }}>
-                    <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", borderLeft: "1px dashed rgba(255,255,255,0.08)", zIndex: 1, pointerEvents: "none" }} />
-                    <div style={{ position: "absolute", top: 8, left: "25%", transform: "translateX(-50%)", color: "rgba(255,255,255,0.2)", fontSize: 11, letterSpacing: 1, zIndex: 1, pointerEvents: "none" }}>FRONT</div>
-                    <div style={{ position: "absolute", top: 8, left: "75%", transform: "translateX(-50%)", color: "rgba(255,255,255,0.2)", fontSize: 11, letterSpacing: 1, zIndex: 1, pointerEvents: "none" }}>BACK</div>
+            {/* Canvas area */}
+            <div className="flex-1 flex items-center justify-center p-5 overflow-hidden">
+                <div className="relative w-full max-w-full" style={{ aspectRatio: `${displayAspect}` }}>
+                    {/* Center guide line */}
+                    <div className="absolute top-0 bottom-0 left-1/2 border-l border-dashed border-white/[0.08] z-[1] pointer-events-none" />
+                    <div className="absolute top-2 left-[25%] -translate-x-1/2 text-white/20 text-[11px] tracking-[1px] z-[1] pointer-events-none">FRONT</div>
+                    <div className="absolute top-2 left-[75%] -translate-x-1/2 text-white/20 text-[11px] tracking-[1px] z-[1] pointer-events-none">BACK</div>
 
-                    <div style={{
-                        position: "absolute", top: 8, right: 12, zIndex: 2,
-                        background: tool === "paint"
-                            ? (paintSubTool === "eraser" ? "rgba(80,80,80,0.85)" : brushColor)
-                            : "rgba(0,0,0,0.5)",
-                        color: tool === "paint" ? (paintSubTool === "eraser" ? "#fff" : "#000") : "#888",
-                        padding: "3px 10px", borderRadius: 20, fontSize: 10, fontWeight: 700,
-                        letterSpacing: 1, textTransform: "uppercase",
-                        border: "1px solid rgba(255,255,255,0.1)", pointerEvents: "none",
-                    }}>
+                    {/* Tool indicator badge */}
+                    <div
+                        className="absolute top-2 right-3 z-[2] px-[10px] py-[3px] rounded-[20px] text-[10px] font-bold tracking-[1px] uppercase border border-white/10 pointer-events-none"
+                        style={{
+                            background: tool === "paint"
+                                ? (paintSubTool === "eraser" ? "rgba(80,80,80,0.85)" : brushColor)
+                                : "rgba(0,0,0,0.5)",
+                            color: tool === "paint" ? (paintSubTool === "eraser" ? "#fff" : "#000") : "#888",
+                        }}
+                    >
                         {tool === "paint"
                             ? (paintSubTool === "eraser" ? `◻ Eraser · ${eraserSize}px` : `✏ Paint · ${brushSize}px`)
                             : "↖ Select"
                         }
                     </div>
 
-                    <canvas ref={displayRef} width={W} height={H}
-                        style={{ width: "100%", height: "100%", display: "block", borderRadius: 10, border: "1px solid #1f1f1f", cursor: getCursor() }}
+                    <canvas
+                        ref={displayRef}
+                        width={W}
+                        height={H}
+                        className="w-full h-full block rounded-[10px] border border-[#1f1f1f]"
+                        style={{ cursor: getCursor() }}
                         onMouseDown={handleMouseDown}
                         onMouseMove={handleMouseMove}
                         onMouseUp={handleMouseUp}
                         onMouseLeave={handleMouseUp}
+                        onTouchStart={e => { e.preventDefault(); handleMouseDown(e); }}
+                        onTouchMove={e => { e.preventDefault(); handleMouseMove(e); }}
+                        onTouchEnd={handleMouseUp}
                     />
 
+                    {/* Selection overlay */}
                     {tool === "select" && selected && (() => {
                         const elH = selected.type === "text" ? selected.size * 1.2 : selected.h;
                         const pct = (v, total) => `${(v / total) * 100}%`;
                         return (
-                            <div style={{ position: "absolute", pointerEvents: "none", left: pct(selected.x, W), top: pct(selected.y, H), width: pct(selected.w, W), height: pct(elH, H) }}>
-                                <div style={{ position: "absolute", inset: 0, border: "1.5px solid #e8c06e", borderRadius: 2 }} />
-                                <div style={{ position: "absolute", right: -6, bottom: -6, width: 12, height: 12, background: "#e8c06e", borderRadius: 3, cursor: "se-resize", pointerEvents: "all" }}
+                            <div className="absolute pointer-events-none" style={{ left: pct(selected.x, W), top: pct(selected.y, H), width: pct(selected.w, W), height: pct(elH, H) }}>
+                                <div className="absolute inset-0 border-[1.5px] border-[#e8c06e] rounded-[2px]" />
+                                <div
+                                    className="absolute -right-[6px] -bottom-[6px] w-3 h-3 bg-[#e8c06e] rounded-[3px] cursor-se-resize pointer-events-auto"
                                     onMouseDown={e => {
                                         e.stopPropagation();
                                         const { x, y } = getPos(e);
                                         resizingRef.current = { id: selected.id, startX: x, startY: y, startW: selected.w, startH: selected.h, startSize: selected.size };
-                                    }} />
+                                    }}
+                                />
                             </div>
                         );
                     })()}
                 </div>
             </div>
 
-            <div style={{ padding: "7px 14px", borderTop: "1px solid #1a1a1a", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <span style={{ color: "#333", fontSize: 10 }}>{elements.length} element{elements.length !== 1 ? "s" : ""}</span>
-                {selected && tool === "select" && <span style={{ color: "#555", fontSize: 10 }}>{selected.type} · {Math.round(selected.x)}, {Math.round(selected.y)}</span>}
-                <span style={{ color: "#333", fontSize: 10 }}>{W}×{H}</span>
-                <span style={{ color: "#333", fontSize: 10 }}>
-                    Editing: <span style={{ color: "#e8c06e", fontWeight: 600 }}>{selectedPart?.toUpperCase()}</span>
+            {/* Status bar */}
+            <div className="px-[14px] py-[7px] border-t border-[#1a1a1a] flex justify-between items-center gap-2">
+                <span className="text-[#333] text-[10px]">{elements.length} element{elements.length !== 1 ? "s" : ""}</span>
+                {selected && tool === "select" && (
+                    <span className="text-[#555] text-[10px]">{selected.type} · {Math.round(selected.x)}, {Math.round(selected.y)}</span>
+                )}
+                <span className="text-[#333] text-[10px]">{W}×{H}</span>
+                <span className="text-[#333] text-[10px]">
+                    Editing: <span className="text-[#e8c06e] font-semibold">{selectedPart?.toUpperCase()}</span>
                 </span>
             </div>
         </div>
@@ -587,10 +587,11 @@ export default function CanvasEditor({
 
 function ToolBtn({ icon, label, color, dark, onClick }) {
     return (
-        <button onClick={onClick}
-            style={{ padding: "6px 11px", border: "none", borderRadius: 7, background: color, color: dark ? "#111" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", transition: "opacity 0.15s" }}
-            onMouseEnter={e => e.currentTarget.style.opacity = "0.8"}
-            onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+        <button
+            onClick={onClick}
+            className="px-[11px] py-[6px] border-none rounded-[7px] cursor-pointer text-[12px] font-semibold flex items-center gap-[5px] whitespace-nowrap transition-opacity duration-150 hover:opacity-80"
+            style={{ background: color, color: dark ? "#111" : "#fff" }}
+        >
             <span>{icon}</span>{label}
         </button>
     );

@@ -14,35 +14,19 @@ function createSharedCanvas() {
   return c;
 }
 
-// Loading spinner که موقع لود مدل نشون داده میشه
 function ModelLoader() {
   return (
-    <div style={{
-      position: "absolute", inset: 0,
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      background: "inherit", zIndex: 5,
-      gap: 16,
-    }}>
-      <div style={{
-        width: 48, height: 48,
-        border: "3px solid rgba(232,192,110,0.15)",
-        borderTop: "3px solid #e8c06e",
-        borderRadius: "50%",
-        animation: "spin 0.9s linear infinite",
-      }} />
-      <div style={{
-        color: "rgba(232,192,110,0.7)",
-        fontSize: 11, fontWeight: 600,
-        letterSpacing: 3, textTransform: "uppercase",
-        fontFamily: "'DM Sans', sans-serif",
-      }}>
+    <div className="absolute inset-0 flex flex-col items-center justify-center z-[5] gap-4">
+      <div className="w-12 h-12 rounded-full border-[3px] border-[rgba(232,192,110,0.15)] border-t-[#e8c06e] animate-spin" />
+      <div className="text-[rgba(232,192,110,0.7)] text-[11px] font-semibold tracking-[3px] uppercase font-['DM_Sans']">
         Loading Model
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
+
+// Mobile tab enum
+const MOBILE_TABS = ["preview", "editor", "sidebar"];
 
 export default function App() {
   const [selectedPart, setSelectedPart] = useState("body");
@@ -50,6 +34,7 @@ export default function App() {
   const [bgColor, setBgColor] = useState("#f0ede8");
   const [bgImage, setBgImage] = useState(null);
   const [modelLoaded, setModelLoaded] = useState(false);
+  const [mobileTab, setMobileTab] = useState("preview"); // for mobile layout
 
   const [activeTextures, setActiveTextures] = useState({
     body: "none",
@@ -86,14 +71,12 @@ export default function App() {
     setActiveTextures(prev => ({ ...prev, [part]: textureId }));
 
     if (!url) {
-      // رنگ رو پاک نکن — فقط texture رو بردار
       const originalCanvas = originalCanvasesRef.current[part];
       originalCanvas.getContext("2d").clearRect(0, 0, originalCanvas.width, originalCanvas.height);
 
       const canvas = canvasesRef.current[part];
       canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
 
-      // اگه رنگ یا element داره، customized بمونه
       setColors(prev => {
         const hasColor = !!prev[part];
         const hasElements = elementsByPartRef.current[part]?.length > 0;
@@ -102,7 +85,7 @@ export default function App() {
         } else {
           customizedPartsRef.current.delete(part);
         }
-        return prev; // رنگ دست نخوره
+        return prev;
       });
 
       if (textureUpdateRef.current[part]) textureUpdateRef.current[part]();
@@ -144,7 +127,6 @@ export default function App() {
 
   const handleColorReset = useCallback((part) => {
     setColors((prev) => ({ ...prev, [part]: "" }));
-    // اگه texture یا element نداره customized از set خارج بشه
     const hasTexture = activeTextures[part] && activeTextures[part] !== "none";
     const hasElements = elementsByPartRef.current[part]?.length > 0;
     if (!hasTexture && !hasElements) {
@@ -176,84 +158,172 @@ export default function App() {
     }
   }, []);
 
+  const bgStyle = bgImage
+    ? { backgroundImage: `url(${bgImage})`, backgroundSize: "cover", backgroundPosition: "center" }
+    : { backgroundColor: bgColor };
+
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden", fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="flex h-[100dvh] overflow-hidden font-['DM_Sans']">
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
 
-      <Sidebar
-        selectedPart={selectedPart}
-        setSelectedPart={setSelectedPart}
-        colors={colors}
-        onColorChange={handleColorChange}
-        onBgImageUpload={handleBgUpload}
-        bgColor={bgColor}
-        customizedParts={customizedPartsRef}
-        onTextureChange={handleTextureChange}
-        activeTextures={activeTextures}
-        onColorReset={handleColorReset}
-      />
-
-      <div style={{ width: 680, minWidth: 680, background: "#0d0d0d", borderRight: "1px solid #1f1f1f", display: "flex", flexDirection: "column" }}>
-        <CanvasEditor
-          sharedCanvas={canvasesRef.current[selectedPart]}
-          baseColor={colors[selectedPart]}
+      {/* ── DESKTOP layout (md+) ── */}
+      <div className="hidden md:flex w-full h-full overflow-hidden">
+        {/* Sidebar */}
+        <Sidebar
           selectedPart={selectedPart}
-          elements={elementsByPart[selectedPart]}
-          onElementsChange={(els) => handleElementsChange(selectedPart, els)}
-          onUpdate={() => handleCanvasUpdate(selectedPart)}
-          originalCanvas={originalCanvasesRef.current[selectedPart]}
-          textureVersion={textureVersion[selectedPart]}
+          setSelectedPart={setSelectedPart}
+          colors={colors}
+          onColorChange={handleColorChange}
+          onBgImageUpload={handleBgUpload}
+          bgColor={bgColor}
+          customizedParts={customizedPartsRef}
+          onTextureChange={handleTextureChange}
+          activeTextures={activeTextures}
+          onColorReset={handleColorReset}
         />
-      </div>
 
-      <div style={{
-        flex: 1,
-        position: "relative",
-        background: bgImage ? `url(${bgImage}) center/cover` : bgColor,
-        transition: "background-color 0.4s ease",
-      }}>
-        <div style={{
-          position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)",
-          background: "rgba(0,0,0,0.5)", backdropFilter: "blur(12px)",
-          color: "rgba(255,255,255,0.7)", padding: "6px 18px", borderRadius: 20,
-          fontSize: 11, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase", zIndex: 10,
-          border: "1px solid rgba(255,255,255,0.1)",
-        }}>
-          Live Preview
+        {/* Canvas Editor */}
+        <div className="w-[680px] min-w-[680px] bg-[#0d0d0d] border-r border-[#1f1f1f] flex flex-col">
+          <CanvasEditor
+            sharedCanvas={canvasesRef.current[selectedPart]}
+            baseColor={colors[selectedPart]}
+            selectedPart={selectedPart}
+            elements={elementsByPart[selectedPart]}
+            onElementsChange={(els) => handleElementsChange(selectedPart, els)}
+            onUpdate={() => handleCanvasUpdate(selectedPart)}
+            originalCanvas={originalCanvasesRef.current[selectedPart]}
+            textureVersion={textureVersion[selectedPart]}
+          />
         </div>
 
-        {/* Loading overlay تا مدل کاملاً لود بشه */}
-        {!modelLoaded && <ModelLoader />}
+        {/* 3D Preview */}
+        <div className="flex-1 relative transition-colors duration-400" style={bgStyle}>
+          <div className="absolute top-5 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-[12px] text-white/70 px-[18px] py-[6px] rounded-[20px] text-[11px] font-semibold tracking-[2px] uppercase z-10 border border-white/10">
+            Live Preview
+          </div>
+          {!modelLoaded && <ModelLoader />}
+          <Canvas camera={{ position: [0.3, 0.3, 2.0], fov: 18 }} style={{ width: "100%", height: "100%" }}>
+            <ambientLight intensity={5} />
+            <directionalLight position={[4, 6, 4]} intensity={6} />
+            <directionalLight position={[-4, 4, -4]} intensity={5} />
+            <directionalLight position={[0, -4, 2]} intensity={10} />
+            <OrbitControls enablePan={false} minDistance={0.8} maxDistance={4} />
+            <Suspense fallback={null}>
+              <Model
+                canvases={canvasesRef.current}
+                colors={colors}
+                setSelectedPart={setSelectedPart}
+                customizedParts={customizedPartsRef}
+                registerUpdate={(part, fn) => {
+                  textureUpdateRef.current[part] = fn;
+                  if (pendingTextureRef.current[part]) {
+                    fn();
+                    delete pendingTextureRef.current[part];
+                  }
+                }}
+                onLoaded={() => setModelLoaded(true)}
+              />
+            </Suspense>
+          </Canvas>
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 text-black/30 text-[11px] tracking-[1px] pointer-events-none whitespace-nowrap">
+            Drag to rotate · Scroll to zoom
+          </div>
+        </div>
+      </div>
 
-        <Canvas camera={{ position: [0.3, 0.3, 2.0], fov: 18 }} style={{ width: "100%", height: "100%" }}>
-          <ambientLight intensity={5} />
-          <directionalLight position={[4, 6, 4]} intensity={6} />
-          <directionalLight position={[-4, 4, -4]} intensity={5} />
-          <directionalLight position={[0, -4, 2]} intensity={10} />
-          <OrbitControls enablePan={false} minDistance={0.8} maxDistance={4} />
-          <Suspense fallback={null}>
-            <Model
-              canvases={canvasesRef.current}
-              colors={colors}
-              setSelectedPart={setSelectedPart}
-              customizedParts={customizedPartsRef}
-              registerUpdate={(part, fn) => {
-                textureUpdateRef.current[part] = fn;
-                if (pendingTextureRef.current[part]) {
-                  fn();
-                  delete pendingTextureRef.current[part];
-                }
-              }}
-              onLoaded={() => setModelLoaded(true)}
+      {/* ── MOBILE layout (below md) ── */}
+      <div className="flex md:hidden flex-col w-full h-full overflow-hidden">
+
+        {/* Mobile tab content */}
+        <div className="flex-1 overflow-hidden relative">
+
+          {/* Preview tab */}
+          <div className={`absolute inset-0 transition-opacity duration-200 ${mobileTab === "preview" ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+            style={bgStyle}>
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-[12px] text-white/70 px-4 py-1 rounded-full text-[10px] font-semibold tracking-[2px] uppercase z-10 border border-white/10">
+              Live Preview
+            </div>
+            {!modelLoaded && <ModelLoader />}
+            <Canvas camera={{ position: [0.3, 0.3, 2.0], fov: 18 }} style={{ width: "100%", height: "100%" }}>
+              <ambientLight intensity={5} />
+              <directionalLight position={[4, 6, 4]} intensity={6} />
+              <directionalLight position={[-4, 4, -4]} intensity={5} />
+              <directionalLight position={[0, -4, 2]} intensity={10} />
+              <OrbitControls enablePan={false} minDistance={0.8} maxDistance={4} />
+              <Suspense fallback={null}>
+                <Model
+                  canvases={canvasesRef.current}
+                  colors={colors}
+                  setSelectedPart={setSelectedPart}
+                  customizedParts={customizedPartsRef}
+                  registerUpdate={(part, fn) => {
+                    textureUpdateRef.current[part] = fn;
+                    if (pendingTextureRef.current[part]) {
+                      fn();
+                      delete pendingTextureRef.current[part];
+                    }
+                  }}
+                  onLoaded={() => setModelLoaded(true)}
+                />
+              </Suspense>
+            </Canvas>
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-black/30 text-[10px] tracking-[1px] pointer-events-none whitespace-nowrap">
+              Drag to rotate · Pinch to zoom
+            </div>
+          </div>
+
+          {/* Editor tab */}
+          <div className={`absolute inset-0 bg-[#0d0d0d] transition-opacity duration-200 ${mobileTab === "editor" ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
+            <CanvasEditor
+              sharedCanvas={canvasesRef.current[selectedPart]}
+              baseColor={colors[selectedPart]}
+              selectedPart={selectedPart}
+              elements={elementsByPart[selectedPart]}
+              onElementsChange={(els) => handleElementsChange(selectedPart, els)}
+              onUpdate={() => handleCanvasUpdate(selectedPart)}
+              originalCanvas={originalCanvasesRef.current[selectedPart]}
+              textureVersion={textureVersion[selectedPart]}
             />
-          </Suspense>
-        </Canvas>
+          </div>
 
-        <div style={{
-          position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
-          color: "rgba(0,0,0,0.3)", fontSize: 11, letterSpacing: 1, pointerEvents: "none", whiteSpace: "nowrap",
-        }}>
-          Drag to rotate · Scroll to zoom
+          {/* Sidebar tab */}
+          <div className={`absolute inset-0 overflow-y-auto transition-opacity duration-200 ${mobileTab === "sidebar" ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
+            <Sidebar
+              selectedPart={selectedPart}
+              setSelectedPart={setSelectedPart}
+              colors={colors}
+              onColorChange={handleColorChange}
+              onBgImageUpload={handleBgUpload}
+              bgColor={bgColor}
+              customizedParts={customizedPartsRef}
+              onTextureChange={handleTextureChange}
+              activeTextures={activeTextures}
+              onColorReset={handleColorReset}
+              isMobile
+            />
+          </div>
+        </div>
+
+        {/* Mobile bottom tab bar */}
+        <div className="flex-shrink-0 bg-[#0a0a0a] border-t border-[#1a1a1a] flex items-stretch">
+          {[
+            { id: "preview", icon: "👁", label: "Preview" },
+            { id: "editor", icon: "✏️", label: "Editor" },
+            { id: "sidebar", icon: "🎨", label: "Style" },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setMobileTab(tab.id)}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 text-[10px] font-semibold tracking-widest uppercase transition-all duration-150 border-t-2 ${
+                mobileTab === tab.id
+                  ? "border-[#e8c06e] text-[#e8c06e]"
+                  : "border-transparent text-[#444]"
+              }`}
+            >
+              <span className="text-lg leading-none">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>
