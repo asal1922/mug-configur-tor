@@ -28,14 +28,15 @@ function normalizeUV(geometry) {
   geometry.attributes.uv.needsUpdate = true;
 }
 
-export default function Model({ canvases, setSelectedPart, registerUpdate, customizedParts }) {
+export default function Model({ canvases, colors, setSelectedPart, registerUpdate, customizedParts, onLoaded }) {
   const { scene } = useGLTF("/models/mug.glb");
 
   const texturesRef = useRef({});
   const dirtyRef = useRef({ body: false, cap: false, ring: false });
   const meshRefs = useRef({});
   const originalMaterialsRef = useRef({});
-  const overlayMeshesRef = useRef({});  // ← تعریف شده
+  const overlayMeshesRef = useRef({});
+  const colorsRef = useRef(colors);
 
   useEffect(() => {
     const textures = {};
@@ -49,6 +50,9 @@ export default function Model({ canvases, setSelectedPart, registerUpdate, custo
       originalMaterialsRef.current[part] = child.material.clone();
     });
 
+    // مدل لود شد — loading overlay رو پنهان کن
+    onLoaded?.();
+
     Object.entries(canvases).forEach(([part, canvas]) => {
       const tex = new THREE.CanvasTexture(canvas);
       tex.flipY = false;
@@ -58,40 +62,41 @@ export default function Model({ canvases, setSelectedPart, registerUpdate, custo
       tex.premultiplyAlpha = false;
       textures[part] = tex;
 
-      registerUpdate?.(part, () => {
+      registerUpdate?.(part, (currentColors) => {
         dirtyRef.current[part] = true;
         const mesh = meshRefs.current[part];
         if (!mesh) return;
 
         if (customizedParts.current.has(part)) {
-          // اگه overlay mesh هنوز ساخته نشده بساز
+          // overlay mesh برای texture
           if (!overlayMeshesRef.current[part]) {
             const overlayGeo = mesh.geometry.clone();
             const overlayMat = new THREE.MeshBasicMaterial({
               map: tex,
-              transparent: true,       // پس‌زمینه canvas کاملاً شفاف
-              alphaTest: 0.01,         // pixel های تقریباً شفاف رندر نمیشن
-              depthWrite: false,        // از z-fighting جلوگیری میکنه
+              transparent: true,
+              alphaTest: 0.01,
+              depthWrite: false,
               polygonOffset: true,
-              polygonOffsetFactor: -1,  // overlay کمی جلوتر از mesh اصلی
+              polygonOffsetFactor: -1,
             });
             const overlayMesh = new THREE.Mesh(overlayGeo, overlayMat);
-
-            // دقیقاً همون transform mesh اصلی
             overlayMesh.position.copy(mesh.getWorldPosition(new THREE.Vector3()));
             overlayMesh.quaternion.copy(mesh.getWorldQuaternion(new THREE.Quaternion()));
             overlayMesh.scale.copy(mesh.getWorldScale(new THREE.Vector3()));
-
             mesh.parent.add(overlayMesh);
             overlayMeshesRef.current[part] = overlayMesh;
           }
 
-          // متریال اصلی GLB دست نمیخوره
+          // رنگ رو روی material اعمال کن (وقتی texture نیست رنگ از اینجا دیده میشه)
           const orig = originalMaterialsRef.current[part];
-          if (orig) mesh.material = orig.clone();
+          if (orig) {
+            const mat = orig.clone();
+            const color = colorsRef.current?.[part];
+            if (color) mat.color = new THREE.Color(color);
+            mesh.material = mat;
+          }
 
         } else {
-          // None انتخاب شده — overlay رو حذف کن
           const overlay = overlayMeshesRef.current[part];
           if (overlay) {
             overlay.parent?.remove(overlay);
@@ -99,7 +104,6 @@ export default function Model({ canvases, setSelectedPart, registerUpdate, custo
             overlay.material.dispose();
             delete overlayMeshesRef.current[part];
           }
-          // متریال اصلی رو برگردون
           const original = originalMaterialsRef.current[part];
           if (original) mesh.material = original.clone();
         }
@@ -118,6 +122,29 @@ export default function Model({ canvases, setSelectedPart, registerUpdate, custo
     };
   }, [scene]);
 
+  // colorsRef رو همیشه آپدیت نگه دار
+  useEffect(() => {
+    colorsRef.current = colors;
+  }, [colors]);
+
+  // واکنش به تغییر رنگ — روی material اعمال کن
+  useEffect(() => {
+    if (!colors) return;
+    Object.entries(colors).forEach(([part, color]) => {
+      const mesh = meshRefs.current[part];
+      if (!mesh) return;
+      if (customizedParts.current.has(part)) {
+        const orig = originalMaterialsRef.current[part];
+        if (orig) {
+          const mat = orig.clone();
+          if (color) mat.color = new THREE.Color(color);
+          mesh.material = mat;
+          dirtyRef.current[part] = true;
+        }
+      }
+    });
+  }, [colors]);
+
   useFrame(() => {
     Object.entries(dirtyRef.current).forEach(([part, dirty]) => {
       if (!dirty) return;
@@ -134,7 +161,10 @@ export default function Model({ canvases, setSelectedPart, registerUpdate, custo
       onPointerDown={(e) => {
         e.stopPropagation();
         const part = MAP[e.object.name];
-        if (part) setSelectedPart(part);
+        // فقط body قابل کلیک است؛ cap و ring غیرفعال هستند
+        if (part === "body") setSelectedPart(part);
+        // if (part === "cap") setSelectedPart(part);   // غیرفعال
+        // if (part === "ring") setSelectedPart(part);  // غیرفعال
       }}
     />
   );

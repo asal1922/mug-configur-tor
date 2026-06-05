@@ -14,11 +14,42 @@ function createSharedCanvas() {
   return c;
 }
 
+// Loading spinner که موقع لود مدل نشون داده میشه
+function ModelLoader() {
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      background: "inherit", zIndex: 5,
+      gap: 16,
+    }}>
+      <div style={{
+        width: 48, height: 48,
+        border: "3px solid rgba(232,192,110,0.15)",
+        borderTop: "3px solid #e8c06e",
+        borderRadius: "50%",
+        animation: "spin 0.9s linear infinite",
+      }} />
+      <div style={{
+        color: "rgba(232,192,110,0.7)",
+        fontSize: 11, fontWeight: 600,
+        letterSpacing: 3, textTransform: "uppercase",
+        fontFamily: "'DM Sans', sans-serif",
+      }}>
+        Loading Model
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
 export default function App() {
   const [selectedPart, setSelectedPart] = useState("body");
   const [colors, setColors] = useState({ body: "", cap: "", ring: "" });
   const [bgColor, setBgColor] = useState("#f0ede8");
   const [bgImage, setBgImage] = useState(null);
+  const [modelLoaded, setModelLoaded] = useState(false);
 
   const [activeTextures, setActiveTextures] = useState({
     body: "none",
@@ -55,19 +86,24 @@ export default function App() {
     setActiveTextures(prev => ({ ...prev, [part]: textureId }));
 
     if (!url) {
-      setColors(prev => ({ ...prev, [part]: "" }));
-
+      // رنگ رو پاک نکن — فقط texture رو بردار
       const originalCanvas = originalCanvasesRef.current[part];
       originalCanvas.getContext("2d").clearRect(0, 0, originalCanvas.width, originalCanvas.height);
 
-      const hasElements = elementsByPartRef.current[part]?.length > 0;
-      if (hasElements) {
-        customizedPartsRef.current.add(part);
-      } else {
-        customizedPartsRef.current.delete(part);
-        const canvas = canvasesRef.current[part];
-        canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-      }
+      const canvas = canvasesRef.current[part];
+      canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+
+      // اگه رنگ یا element داره، customized بمونه
+      setColors(prev => {
+        const hasColor = !!prev[part];
+        const hasElements = elementsByPartRef.current[part]?.length > 0;
+        if (hasColor || hasElements) {
+          customizedPartsRef.current.add(part);
+        } else {
+          customizedPartsRef.current.delete(part);
+        }
+        return prev; // رنگ دست نخوره
+      });
 
       if (textureUpdateRef.current[part]) textureUpdateRef.current[part]();
       setTextureVersion(prev => ({ ...prev, [part]: prev[part] + 1 }));
@@ -85,7 +121,6 @@ export default function App() {
       originalCtx.clearRect(0, 0, originalCanvas.width, originalCanvas.height);
       originalCtx.drawImage(img, 0, 0, originalCanvas.width, originalCanvas.height);
 
-      // تکسچر رو بکش ولی elements رو هم روش بذار
       const canvas = canvasesRef.current[part];
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -94,7 +129,6 @@ export default function App() {
       if (textureUpdateRef.current[part]) textureUpdateRef.current[part]();
       else pendingTextureRef.current[part] = true;
 
-      // ← trigger redraw در CanvasEditor تا elements روی تکسچر جدید رسم بشن
       setTextureVersion(prev => ({ ...prev, [part]: prev[part] + 1 }));
     };
     img.src = url;
@@ -108,6 +142,20 @@ export default function App() {
     }
   }, []);
 
+  const handleColorReset = useCallback((part) => {
+    setColors((prev) => ({ ...prev, [part]: "" }));
+    // اگه texture یا element نداره customized از set خارج بشه
+    const hasTexture = activeTextures[part] && activeTextures[part] !== "none";
+    const hasElements = elementsByPartRef.current[part]?.length > 0;
+    if (!hasTexture && !hasElements) {
+      customizedPartsRef.current.delete(part);
+    }
+    if (textureUpdateRef.current[part]) {
+      textureUpdateRef.current[part]();
+    }
+    setTextureVersion(prev => ({ ...prev, [part]: prev[part] + 1 }));
+  }, [activeTextures]);
+
   const handleBgUpload = useCallback((dataUrl, fallbackColor) => {
     if (dataUrl) setBgImage(dataUrl);
     else { setBgImage(null); setBgColor(fallbackColor); }
@@ -120,7 +168,7 @@ export default function App() {
   }, []);
 
   const handleElementsChange = useCallback((part, els) => {
-    elementsByPartRef.current = { ...elementsByPartRef.current, [part]: els }; // ← ref رو آپدیت کن
+    elementsByPartRef.current = { ...elementsByPartRef.current, [part]: els };
     setElementsByPart(prev => ({ ...prev, [part]: els }));
     if (els.length > 0) {
       customizedPartsRef.current.add(part);
@@ -142,6 +190,7 @@ export default function App() {
         customizedParts={customizedPartsRef}
         onTextureChange={handleTextureChange}
         activeTextures={activeTextures}
+        onColorReset={handleColorReset}
       />
 
       <div style={{ width: 680, minWidth: 680, background: "#0d0d0d", borderRight: "1px solid #1f1f1f", display: "flex", flexDirection: "column" }}>
@@ -173,6 +222,9 @@ export default function App() {
           Live Preview
         </div>
 
+        {/* Loading overlay تا مدل کاملاً لود بشه */}
+        {!modelLoaded && <ModelLoader />}
+
         <Canvas camera={{ position: [0.3, 0.3, 2.0], fov: 18 }} style={{ width: "100%", height: "100%" }}>
           <ambientLight intensity={5} />
           <directionalLight position={[4, 6, 4]} intensity={6} />
@@ -182,6 +234,7 @@ export default function App() {
           <Suspense fallback={null}>
             <Model
               canvases={canvasesRef.current}
+              colors={colors}
               setSelectedPart={setSelectedPart}
               customizedParts={customizedPartsRef}
               registerUpdate={(part, fn) => {
@@ -191,6 +244,7 @@ export default function App() {
                   delete pendingTextureRef.current[part];
                 }
               }}
+              onLoaded={() => setModelLoaded(true)}
             />
           </Suspense>
         </Canvas>

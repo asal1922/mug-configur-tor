@@ -8,7 +8,7 @@ export default function CanvasEditor({
     elements,
     onElementsChange,
     originalCanvas,
-    textureVersion,   // ← پراپ جدید: هر بار تکسچر تغییر کنه redraw میشه
+    textureVersion,
 }) {
     const displayRef = useRef(null);
     const draggingRef = useRef(null);
@@ -23,6 +23,10 @@ export default function CanvasEditor({
     const [tool, setTool] = useState("select");
     const [brushSize, setBrushSize] = useState(20);
     const [brushColor, setBrushColor] = useState("#e8c06e");
+    const [eraserSize, setEraserSize] = useState(30);
+    // paintSubTool: "brush" یا "eraser"
+    const [paintSubTool, setPaintSubTool] = useState("brush");
+
     const isDrawingRef = useRef(false);
     const lastPosRef = useRef(null);
     const currentStrokeRef = useRef(null);
@@ -46,7 +50,9 @@ export default function CanvasEditor({
             } catch { return false; }
         })();
 
-        // ابتدا تکسچر پایه رو بکش
+        // sharedCanvas (texture مدل):
+        // اگه texture داره: texture + رنگ (multiply) روش
+        // اگه فقط رنگ داره: sharedCanvas خالی بمونه، رنگ از Model.jsx روی material اعمال میشه
         if (hasOriginalContent) {
             ctx.drawImage(originalCanvas, 0, 0, W, H);
             if (baseColor) {
@@ -55,13 +61,14 @@ export default function CanvasEditor({
                 ctx.fillStyle = baseColor;
                 ctx.fillRect(0, 0, W, H);
                 ctx.restore();
+                ctx.globalCompositeOperation = "source-over";
             }
         }
+        // اگه فقط رنگ داره (بدون texture): sharedCanvas خالی بمونه
 
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
 
-        // بعد elements رو روی تکسچر بکش — همیشه لایه بالا
         els.forEach(el => {
             if (el.type === "image") {
                 ctx.drawImage(el.image, el.x, el.y, el.w, el.h);
@@ -77,12 +84,33 @@ export default function CanvasEditor({
             if (el.type === "stroke") {
                 drawStroke(ctx, el);
             }
+            if (el.type === "eraser") {
+                drawEraser(ctx, el, sharedCanvas);
+            }
         });
 
         if (displayRef.current) {
             const dCtx = displayRef.current.getContext("2d");
             dCtx.clearRect(0, 0, W, H);
-            if (!hasOriginalContent && !baseColor) {
+
+            if (hasOriginalContent) {
+                // texture داریم: همون رو به عنوان پس‌زمینه بکش
+                dCtx.drawImage(originalCanvas, 0, 0, W, H);
+                if (baseColor) {
+                    dCtx.save();
+                    dCtx.globalCompositeOperation = "multiply";
+                    dCtx.fillStyle = baseColor;
+                    dCtx.fillRect(0, 0, W, H);
+                    dCtx.restore();
+                }
+            } else if (baseColor) {
+                // فقط رنگ، بدون texture
+                dCtx.save();
+                dCtx.fillStyle = baseColor;
+                dCtx.fillRect(0, 0, W, H);
+                dCtx.restore();
+            } else {
+                // هیچی نیست: checkerboard
                 const tile = 64;
                 for (let row = 0; row < H; row += tile) {
                     for (let col = 0; col < W; col += tile) {
@@ -91,7 +119,27 @@ export default function CanvasEditor({
                     }
                 }
             }
-            dCtx.drawImage(sharedCanvas, 0, 0);
+
+            // elements (text, image, stroke, eraser) رو روی پس‌زمینه بکش
+            els.forEach(el => {
+                if (el.type === "image") {
+                    dCtx.drawImage(el.image, el.x, el.y, el.w, el.h);
+                }
+                if (el.type === "text") {
+                    dCtx.save();
+                    dCtx.font = `bold ${el.size}px ${el.font || "Arial"}`;
+                    dCtx.fillStyle = el.color;
+                    dCtx.textBaseline = "top";
+                    dCtx.fillText(el.text, el.x, el.y);
+                    dCtx.restore();
+                }
+                if (el.type === "stroke") {
+                    drawStroke(dCtx, el);
+                }
+                if (el.type === "eraser") {
+                    drawEraser(dCtx, el, displayRef.current);
+                }
+            });
         }
 
         onUpdate?.();
@@ -114,7 +162,64 @@ export default function CanvasEditor({
         ctx.restore();
     }
 
-    // ← textureVersion اضافه شد: هر بار تکسچر عوض بشه redraw میشه
+    // پاک‌کن: مسیر eraser رو mask میکنه و texture+رنگ زیرین رو restore میکنه
+    function drawEraser(ctx, el, targetCanvas) {
+        if (!el.points || el.points.length < 2) return;
+
+        // یه offscreen canvas بساز که فقط مسیر eraser رو داره
+        const mask = document.createElement("canvas");
+        mask.width = W; mask.height = H;
+        const mCtx = mask.getContext("2d");
+        mCtx.lineCap = "round";
+        mCtx.lineJoin = "round";
+        mCtx.lineWidth = el.size;
+        mCtx.strokeStyle = "black";
+        mCtx.beginPath();
+        mCtx.moveTo(el.points[0].x, el.points[0].y);
+        for (let i = 1; i < el.points.length; i++) mCtx.lineTo(el.points[i].x, el.points[i].y);
+        mCtx.stroke();
+
+        // یه offscreen canvas از لایه پایه (texture+رنگ) بساز
+        const base = document.createElement("canvas");
+        base.width = W; base.height = H;
+        const bCtx = base.getContext("2d");
+        if (originalCanvas) {
+            const hasContent = (() => {
+                try { return originalCanvas.getContext("2d").getImageData(0,0,4,4).data.some(v=>v!==0); }
+                catch { return false; }
+            })();
+            if (hasContent) {
+                bCtx.drawImage(originalCanvas, 0, 0, W, H);
+                if (baseColor) {
+                    bCtx.save();
+                    bCtx.globalCompositeOperation = "multiply";
+                    bCtx.fillStyle = baseColor;
+                    bCtx.fillRect(0, 0, W, H);
+                    bCtx.restore();
+                }
+            } else if (baseColor) {
+                bCtx.fillStyle = baseColor;
+                bCtx.fillRect(0, 0, W, H);
+            }
+        }
+
+        // فقط جایی که mask داره، لایه پایه رو روی targetCanvas بکش
+        bCtx.save();
+        bCtx.globalCompositeOperation = "destination-in";
+        bCtx.drawImage(mask, 0, 0);
+        bCtx.restore();
+
+        ctx.save();
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.drawImage(mask, 0, 0);
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalCompositeOperation = "source-over";
+        ctx.drawImage(base, 0, 0);
+        ctx.restore();
+    }
+
     useEffect(() => {
         redraw(elements);
     }, [elements, baseColor, textureVersion]);
@@ -135,11 +240,13 @@ export default function CanvasEditor({
         if (tool === "paint") {
             isDrawingRef.current = true;
             lastPosRef.current = { x, y };
+
+            const isEraser = paintSubTool === "eraser";
             const stroke = {
                 id: Date.now(),
-                type: "stroke",
+                type: isEraser ? "eraser" : "stroke",
                 color: brushColor,
-                size: brushSize,
+                size: isEraser ? eraserSize : brushSize,
                 points: [{ x, y }],
             };
             currentStrokeRef.current = stroke;
@@ -159,7 +266,7 @@ export default function CanvasEditor({
 
         for (let i = elements.length - 1; i >= 0; i--) {
             const el = elements[i];
-            if (el.type === "stroke") continue;
+            if (el.type === "stroke" || el.type === "eraser") continue;
             const elH = el.type === "text" ? el.size * 1.2 : el.h;
             if (x >= el.x && x <= el.x + el.w && y >= el.y && y <= el.y + elH) {
                 selectedIdRef.current = el.id;
@@ -263,21 +370,24 @@ export default function CanvasEditor({
     };
 
     const undoLastStroke = () => {
-        const lastStrokeIdx = [...elements].reverse().findIndex(el => el.type === "stroke");
-        if (lastStrokeIdx === -1) return;
-        const realIdx = elements.length - 1 - lastStrokeIdx;
+        // آخرین stroke یا eraser رو پیدا و حذف کن
+        const lastIdx = [...elements].reverse().findIndex(el => el.type === "stroke" || el.type === "eraser");
+        if (lastIdx === -1) return;
+        const realIdx = elements.length - 1 - lastIdx;
         onElementsChange(elements.filter((_, i) => i !== realIdx));
     };
 
     const clearAllStrokes = () => {
-        onElementsChange(elements.filter(el => el.type !== "stroke"));
+        onElementsChange(elements.filter(el => el.type !== "stroke" && el.type !== "eraser"));
     };
 
     const selected = getSelectedEl();
-    const strokeCount = elements.filter(e => e.type === "stroke").length;
+    const strokeCount = elements.filter(e => e.type === "stroke" || e.type === "eraser").length;
 
     const getCursor = () => {
-        if (tool === "paint") return "crosshair";
+        if (tool === "paint") {
+            return paintSubTool === "eraser" ? "cell" : "crosshair";
+        }
         if (draggingRef.current) return "grabbing";
         return "default";
     };
@@ -292,6 +402,7 @@ export default function CanvasEditor({
                     Editor
                 </span>
 
+                {/* Tool selector: Select / Paint */}
                 <div style={{ display: "flex", gap: 3, background: "#111", borderRadius: 8, padding: 3, border: "1px solid #1e1e1e" }}>
                     {[
                         { id: "select", icon: "↖", label: "Select" },
@@ -310,7 +421,36 @@ export default function CanvasEditor({
                     ))}
                 </div>
 
+                {/* Paint sub-tools: Brush / Eraser */}
                 {tool === "paint" && (
+                    <div style={{ display: "flex", gap: 3, background: "#111", borderRadius: 8, padding: 3, border: "1px solid #1e1e1e" }}>
+                        <button
+                            onClick={() => setPaintSubTool("brush")}
+                            title="Brush"
+                            style={{
+                                padding: "5px 10px", borderRadius: 6, border: "none",
+                                background: paintSubTool === "brush" ? "#e8c06e" : "transparent",
+                                color: paintSubTool === "brush" ? "#0a0a0a" : "#555",
+                                cursor: "pointer", fontSize: 13, fontWeight: 600, transition: "all 0.12s",
+                            }}>
+                            ✏ Brush
+                        </button>
+                        <button
+                            onClick={() => setPaintSubTool("eraser")}
+                            title="Eraser"
+                            style={{
+                                padding: "5px 10px", borderRadius: 6, border: "none",
+                                background: paintSubTool === "eraser" ? "#e8c06e" : "transparent",
+                                color: paintSubTool === "eraser" ? "#0a0a0a" : "#555",
+                                cursor: "pointer", fontSize: 13, fontWeight: 600, transition: "all 0.12s",
+                            }}>
+                            ◻ Eraser
+                        </button>
+                    </div>
+                )}
+
+                {/* Brush controls */}
+                {tool === "paint" && paintSubTool === "brush" && (
                     <div style={{ display: "flex", gap: 6, alignItems: "center", background: "#111", borderRadius: 8, padding: "5px 10px", border: "1px solid #1e1e1e" }}>
                         <input type="color" value={brushColor} onChange={e => setBrushColor(e.target.value)}
                             style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a2a", cursor: "pointer", padding: 1, background: "none" }} />
@@ -319,6 +459,18 @@ export default function CanvasEditor({
                             onChange={e => setBrushSize(Number(e.target.value))}
                             style={{ width: 80, accentColor: "#e8c06e" }} />
                         <span style={{ color: "#888", fontSize: 11, minWidth: 24 }}>{brushSize}</span>
+                    </div>
+                )}
+
+                {/* Eraser controls */}
+                {tool === "paint" && paintSubTool === "eraser" && (
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", background: "#111", borderRadius: 8, padding: "5px 10px", border: "1px solid #1e1e1e" }}>
+                        <span style={{ fontSize: 16 }}>◻</span>
+                        <span style={{ color: "#444", fontSize: 10 }}>SIZE</span>
+                        <input type="range" min={5} max={200} value={eraserSize}
+                            onChange={e => setEraserSize(Number(e.target.value))}
+                            style={{ width: 80, accentColor: "#e8c06e" }} />
+                        <span style={{ color: "#888", fontSize: 11, minWidth: 24 }}>{eraserSize}</span>
                     </div>
                 )}
 
@@ -381,13 +533,18 @@ export default function CanvasEditor({
 
                     <div style={{
                         position: "absolute", top: 8, right: 12, zIndex: 2,
-                        background: tool === "paint" ? brushColor : "rgba(0,0,0,0.5)",
-                        color: tool === "paint" ? "#000" : "#888",
+                        background: tool === "paint"
+                            ? (paintSubTool === "eraser" ? "rgba(80,80,80,0.85)" : brushColor)
+                            : "rgba(0,0,0,0.5)",
+                        color: tool === "paint" ? (paintSubTool === "eraser" ? "#fff" : "#000") : "#888",
                         padding: "3px 10px", borderRadius: 20, fontSize: 10, fontWeight: 700,
                         letterSpacing: 1, textTransform: "uppercase",
                         border: "1px solid rgba(255,255,255,0.1)", pointerEvents: "none",
                     }}>
-                        {tool === "paint" ? `✏ Paint · ${brushSize}px` : "↖ Select"}
+                        {tool === "paint"
+                            ? (paintSubTool === "eraser" ? `◻ Eraser · ${eraserSize}px` : `✏ Paint · ${brushSize}px`)
+                            : "↖ Select"
+                        }
                     </div>
 
                     <canvas ref={displayRef} width={W} height={H}

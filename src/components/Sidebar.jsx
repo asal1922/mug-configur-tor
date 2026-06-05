@@ -2,8 +2,8 @@ import { useRef, useState } from "react";
 
 const PARTS = [
     { id: "body", label: "Body", icon: "⬡" },
-    { id: "cap", label: "Cap", icon: "◉" },
-    { id: "ring", label: "Ring", icon: "◈" },
+/*     { id: "cap", label: "Cap", icon: "◉" },
+    { id: "ring", label: "Ring", icon: "◈" }, */
 ];
 
 const PRESETS = [
@@ -17,14 +17,7 @@ const BG_PRESETS = [
     "#d4e6f1", "#fdebd0", "#e8daef", "#d5f5e3", "#fadbd8",
 ];
 
-// Built-in texture presets (Unsplash + reliable CDN URLs)
 const TEXTURE_PRESETS = [
-    /*    {
-           id: "default",
-           label: "Original",
-           url: "https://images.unsplash.com/photo-1506784365847-bbad939e9335?fm=jpg&q=80&w=2048",
-           thumb: "https://images.unsplash.com/photo-1506784365847-bbad939e9335?fm=jpg&q=60&w=120",
-       }, */
     {
         id: "marble",
         label: "Marble",
@@ -74,6 +67,7 @@ export default function Sidebar({
     setSelectedPart,
     colors,
     onColorChange,
+    onColorReset,
     onBgImageUpload,
     bgColor,
     onReset,
@@ -84,10 +78,24 @@ export default function Sidebar({
     const bgInputRef = useRef();
     const textureInputRef = useRef();
     const [pickerColor, setPickerColor] = useState("#ffffff");
+    const [cartLoading, setCartLoading] = useState(false);
 
     const isCustomized = customizedParts?.current?.has(selectedPart);
     const displayColor = colors[selectedPart] || pickerColor;
     const activeTextureId = activeTextures?.[selectedPart] || "default";
+
+    const handleAddToCart = async () => {
+        setCartLoading(true);
+        const variantId = "53278746444123";
+        const shopUrl = "mug-customizer.myshopify.com";
+        const note = `Body color: ${colors.body || "original"}, Cap color: ${colors.cap || "original"}, Ring color: ${colors.ring || "original"}`;
+        const url = `https://${shopUrl}/cart/${variantId}:1?note=${encodeURIComponent(note)}&password=eaviad`;
+
+        // کمی تأخیر برای نشون دادن loading، بعد باز کردن صفحه
+        await new Promise(r => setTimeout(r, 800));
+        window.open(url, '_blank');
+        setCartLoading(false);
+    };
 
     return (
         <div style={{
@@ -122,7 +130,6 @@ export default function Sidebar({
                     </div>
                 </Section>
 
-                {/* Texture Picker */}
                 {selectedPart && (
                     <Section label={`${selectedPart.charAt(0).toUpperCase() + selectedPart.slice(1)} Texture`}>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 8 }}>
@@ -162,7 +169,6 @@ export default function Sidebar({
                             ))}
                         </div>
 
-                        {/* Upload custom texture */}
                         <div
                             onClick={() => textureInputRef.current.click()}
                             style={{
@@ -196,7 +202,6 @@ export default function Sidebar({
                     </Section>
                 )}
 
-                {/* Color */}
                 {selectedPart && (
                     <Section label={`${selectedPart.charAt(0).toUpperCase() + selectedPart.slice(1)} Color`}>
                         <div style={{
@@ -225,6 +230,20 @@ export default function Sidebar({
                                 onChange={e => setPickerColor(e.target.value)}
                                 style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #2a2a2a", cursor: "pointer", padding: 2, background: "none" }}
                             />
+                            {isCustomized && colors[selectedPart] && (
+                                <button
+                                    onClick={() => onColorReset?.(selectedPart)}
+                                    title="Remove color"
+                                    style={{
+                                        width: 32, height: 32, borderRadius: 8,
+                                        border: "1px solid #2a1515", background: "#1a0e0e",
+                                        color: "#c0392b", cursor: "pointer", fontSize: 14,
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        flexShrink: 0,
+                                    }}>
+                                    ✕
+                                </button>
+                            )}
                         </div>
 
                         {!isCustomized && (
@@ -297,21 +316,35 @@ export default function Sidebar({
                 </Section>
             </div>
 
+            {/* Add to Cart با loading state */}
             <button
-                onClick={() => {
-                    const variantId = "53278746444123";
-                    const shopUrl = "mug-customizer.myshopify.com";
-                    const note = `Body color: ${colors.body || "original"}, Cap color: ${colors.cap || "original"}, Ring color: ${colors.ring || "original"}`;
-                    window.open(
-                        `https://${shopUrl}/cart/${variantId}:1?note=${encodeURIComponent(note)}&password=eaviad`,
-                        '_blank'
-                    );
-                }}
+                onClick={handleAddToCart}
+                disabled={cartLoading}
                 style={{
-                    flex: 2, padding: "10px", background: "linear-gradient(135deg, #e8c06e, #d4a843)",
-                    color: "#0a0a0a", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                    margin: "12px 16px 16px",
+                    padding: "12px", background: cartLoading
+                        ? "linear-gradient(135deg, #b8963a, #a07828)"
+                        : "linear-gradient(135deg, #e8c06e, #d4a843)",
+                    color: "#0a0a0a", border: "none", borderRadius: 10,
+                    fontSize: 13, fontWeight: 700, cursor: cartLoading ? "not-allowed" : "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    transition: "all 0.2s", opacity: cartLoading ? 0.85 : 1,
                 }}>
-                Add to Cart →
+                {cartLoading ? (
+                    <>
+                        <div style={{
+                            width: 14, height: 14,
+                            border: "2px solid rgba(0,0,0,0.2)",
+                            borderTop: "2px solid #0a0a0a",
+                            borderRadius: "50%",
+                            animation: "spin 0.7s linear infinite",
+                        }} />
+                        Processing...
+                        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                    </>
+                ) : (
+                    "Add to Cart →"
+                )}
             </button>
         </div>
     );
